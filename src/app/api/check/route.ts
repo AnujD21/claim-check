@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { missingConfig } from "@/lib/nebius";
+import { hasModel, missingConfig } from "@/lib/nebius";
 import { runCheck } from "@/lib/pipeline";
 import type { CheckEvent } from "@/lib/types";
 
@@ -9,8 +9,14 @@ const Body = z
   .object({
     text: z.string().max(20_000).optional(),
     url: z.url().optional(),
+    // The browser downscales screenshots before upload; this cap keeps requests under Vercel's 4.5 MB body limit.
+    image: z
+      .string()
+      .max(4_000_000, "That screenshot is too large.")
+      .regex(/^data:image\/(png|jpeg|webp);base64,/, "Screenshots must be PNG, JPEG or WebP.")
+      .optional(),
   })
-  .refine((b) => b.text?.trim() || b.url, "Send some text or a URL to check.");
+  .refine((b) => b.text?.trim() || b.url || b.image, "Send some text, a URL or a screenshot to check.");
 
 export async function POST(request: Request) {
   const missing = missingConfig();
@@ -21,6 +27,9 @@ export async function POST(request: Request) {
   const body = Body.safeParse(await request.json().catch(() => null));
   if (!body.success) {
     return Response.json({ error: body.error.issues[0]?.message ?? "Invalid request." }, { status: 400 });
+  }
+  if (body.data.image && !hasModel("vision")) {
+    return Response.json({ error: "Screenshot checking isn't set up on this server." }, { status: 400 });
   }
 
   const encoder = new TextEncoder();

@@ -28,6 +28,8 @@ const VerdictSchema = z.object({
   citations: z.array(z.coerce.number().int()),
 });
 
+const TranscriptSchema = z.object({ messages: z.array(z.object({ text: z.string() })) });
+
 const ReportSchema = z.object({
   headline: z.string().min(1),
   summary: z.string().min(1),
@@ -36,9 +38,22 @@ const ReportSchema = z.object({
 /** How much each verdict counts toward the credibility score; unverified claims are left out. */
 const VERDICT_VALUE: Record<Verdict, number | undefined> = { supported: 1, misleading: 0.5, refuted: 0, unverified: undefined };
 
+// The model reliably transcribes names and timestamps when told not to, so it gets fields for them
+// and the pipeline keeps only each message's text.
+const READ_IMAGE_PROMPT = `You read screenshots for a fact-checking pipeline. List every message or post visible in the screenshot, in order.
+For each one give:
+- "sender": who sent it, if shown, otherwise ""
+- "label": any app label such as "Forwarded many times", otherwise ""
+- "time": its timestamp, if shown, otherwise ""
+- "text": the message body word for word, including any text inside images within it (captions, headlines, chart labels)
+Ignore the phone status bar, buttons and message box.
+Reply with only JSON: {"messages":[{"sender":"","label":"","time":"","text":"..."}]}
+If there is no readable text, reply {"messages":[]}.`;
+
 const EXTRACT_PROMPT = `You are the claim extractor in a fact-checking pipeline.
 Read the user's text and list the distinct factual claims that can be checked against public sources: statistics, dates, events, quotes, scientific or medical statements, attributions.
 Skip opinions, predictions, jokes and vague statements. Merge duplicates. Keep at most ${MAX_CLAIMS}, choosing the ones most central to the text's message.
+Don't split one statement into several claims: fold appeals to authority like "doctors are warning" or "scientists say" into the claim they support.
 For each claim give:
 - "claim": one self-contained sentence that makes sense without the original text (replace "he", "this", etc. with what they refer to).
 - "query": a web search query that would find evidence for or against it.
@@ -64,7 +79,7 @@ const REPORT_PROMPT = `You write the summary card for a fact-check. You get the 
 - "summary": 2 sentences on what holds up and what doesn't.
 Reply with only JSON: {"headline":"...","summary":"..."}`;
 
-export async function runCheck(input: { text?: string; url?: string }, emit: Emit, signal?: AbortSignal) {
+export async function runCheck(input: { text?: string; url?: string; image?: string }, emit: Emit, signal?: AbortSignal) {
   const started = Date.now();
 
   let text = input.text?.trim() ?? "";
@@ -73,8 +88,30 @@ export async function runCheck(input: { text?: string; url?: string }, emit: Emi
     text = await extractArticle(input.url, signal);
     emit({ type: "trace", step: { id: "read-url", label: "Read article", provider: "tavily", ms: Date.now() - t0 } });
   }
+  if (input.image) {
+    const read = await chatJSON({
+      id: "read-image",
+      label: "Read screenshot",
+      tier: "vision",
+      system: READ_IMAGE_PROMPT,
+      user: [
+        { type: "text", text: "Read this screenshot." },
+        { type: "image_url", image_url: { url: input.image } },
+      ],
+      schema: TranscriptSchema,
+      maxTokens: 2048,
+      thinking: false,
+      signal,
+    });
+    emit({ type: "trace", step: read.step });
+    text = read.data.messages
+      .map((m) => m.text.trim())
+      .filter(Boolean)
+      .join("\n\n");
+    emit({ type: "transcript", text });
+  }
   text = text.slice(0, MAX_INPUT_CHARS);
-  emit({ type: "input", source: input.url ? "url" : "text", chars: text.length });
+  emit({ type: "input", source: input.image ? "image" : input.url ? "url" : "text", chars: text.length });
 
   const extracted = await chatJSON({
     id: "extract",

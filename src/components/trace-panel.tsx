@@ -5,16 +5,17 @@ export function TracePanel({ trace, running }: { trace: TraceStep[]; running: bo
   const calls = (tier: Tier) => trace.filter((s) => s.tier === tier).length;
   const searches = trace.filter((s) => s.provider === "tavily").length;
   const tokens = trace.reduce((sum, s) => sum + (s.tokens ? s.tokens.prompt + s.tokens.completion : 0), 0);
+  const tiers = (["vision", "nano", "super", "ultra"] as const).filter((t) => t !== "vision" || calls(t) > 0);
 
   return (
     <aside className="rounded-2xl border border-line bg-surface p-5">
       <h2 className="font-medium">Agent trace</h2>
       <p className="mt-0.5 text-sm text-muted">Every model call and web search in this check.</p>
 
-      <dl className="mt-4 grid grid-cols-4 gap-2 text-center">
-        {(["nano", "super", "ultra"] as const).map((tier) => (
+      <dl className={`mt-4 grid gap-2 text-center ${tiers.length > 3 ? "grid-cols-5" : "grid-cols-4"}`}>
+        {tiers.map((tier) => (
           <div key={tier} className="rounded-lg bg-surface-2 px-1 py-2">
-            <dt className={`text-xs ${TIERS[tier].text}`}>{TIERS[tier].label.replace("Nemotron ", "")}</dt>
+            <dt className={`text-xs ${TIERS[tier].text}`}>{TIERS[tier].short}</dt>
             <dd className="font-mono text-lg tabular-nums">{calls(tier)}</dd>
           </div>
         ))}

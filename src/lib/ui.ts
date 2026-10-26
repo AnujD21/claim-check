@@ -7,10 +7,11 @@ export const VERDICTS: Record<Verdict, { label: string; badge: string; bar: stri
   unverified: { label: "Unverified", badge: "text-unverified bg-unverified/10 ring-unverified/25", bar: "bg-unverified" },
 };
 
-export const TIERS: Record<Tier, { label: string; role: string; text: string; dot: string }> = {
-  nano: { label: "Nemotron Nano", role: "Pulls out claims, writes the report", text: "text-nano", dot: "bg-nano" },
-  super: { label: "Nemotron Super", role: "Checks simple claims", text: "text-super", dot: "bg-super" },
-  ultra: { label: "Nemotron Ultra", role: "Reasons through complex or uncertain claims", text: "text-ultra", dot: "bg-ultra" },
+export const TIERS: Record<Tier, { label: string; short: string; text: string; dot: string }> = {
+  nano: { label: "Nemotron Nano", short: "Nano", text: "text-nano", dot: "bg-nano" },
+  super: { label: "Nemotron Super", short: "Super", text: "text-super", dot: "bg-super" },
+  ultra: { label: "Nemotron Ultra", short: "Ultra", text: "text-ultra", dot: "bg-ultra" },
+  vision: { label: "Nemotron Super VL", short: "Vision", text: "text-vision", dot: "bg-vision" },
 };
 
 /** "nvidia/Nemotron-3-Super-..." → "Nemotron-3-Super-..." */

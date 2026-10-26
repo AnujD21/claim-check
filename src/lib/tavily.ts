@@ -3,7 +3,20 @@ import type { Source } from "./types";
 const TAVILY_API = "https://api.tavily.com";
 
 // Social and video sites mostly repeat the claim being checked rather than evidence about it.
-const EXCLUDED_DOMAINS = ["facebook.com", "instagram.com", "tiktok.com", "x.com", "twitter.com", "reddit.com", "youtube.com", "quora.com", "pinterest.com"];
+const EXCLUDED_DOMAINS = [
+  "facebook.com",
+  "instagram.com",
+  "threads.com",
+  "threads.net",
+  "tiktok.com",
+  "x.com",
+  "twitter.com",
+  "linkedin.com",
+  "reddit.com",
+  "youtube.com",
+  "quora.com",
+  "pinterest.com",
+];
 
 async function tavily<T>(path: string, body: object, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${TAVILY_API}${path}`, {

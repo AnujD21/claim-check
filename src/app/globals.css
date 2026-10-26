@@ -16,6 +16,7 @@
   --nano: #0f7680;
   --super: #4a55c4;
   --ultra: #8a3fc0;
+  --vision: #b8336a;
   --tavily: #b8530f;
 
   color-scheme: light;
@@ -38,6 +39,7 @@
     --nano: #3cc3cc;
     --super: #8b94f5;
     --ultra: #c08af0;
+    --vision: #f07aa8;
     --tavily: #f08a45;
 
     color-scheme: dark;
@@ -60,6 +62,7 @@
   --color-nano: var(--nano);
   --color-super: var(--super);
   --color-ultra: var(--ultra);
+  --color-vision: var(--vision);
   --color-tavily: var(--tavily);
 
   --font-sans: var(--font-geist-sans);

@@ -1,15 +1,25 @@
 "use client";
 
 import { useEffect, useReducer, useRef, useState } from "react";
-import { EXAMPLES } from "@/lib/examples";
+import { EXAMPLES, SAMPLE_SCREENSHOT } from "@/lib/examples";
 import type { CheckEvent, Report, TraceStep } from "@/lib/types";
 import { TIERS } from "@/lib/ui";
 import { ClaimCard, type ClaimState } from "./claim-card";
 import { ReportCard } from "./report-card";
 import { TracePanel } from "./trace-panel";
 
+type Mode = "text" | "image" | "url";
+
+const MODES: { id: Mode; label: string }[] = [
+  { id: "text", label: "Paste text" },
+  { id: "image", label: "Screenshot" },
+  { id: "url", label: "Article URL" },
+];
+
 interface State {
   status: "idle" | "running" | "done" | "error";
+  source: Mode;
+  transcript?: string;
   claims: ClaimState[];
   trace: TraceStep[];
   report?: Report;
@@ -17,12 +27,12 @@ interface State {
   ms?: number;
 }
 
-type Action = { type: "start" } | { type: "event"; event: CheckEvent } | { type: "fail"; message: string };
+type Action = { type: "start"; source: Mode } | { type: "event"; event: CheckEvent } | { type: "fail"; message: string };
 
-const INITIAL: State = { status: "idle", claims: [], trace: [] };
+const INITIAL: State = { status: "idle", source: "text", claims: [], trace: [] };
 
 function reducer(state: State, action: Action): State {
-  if (action.type === "start") return { ...INITIAL, status: "running" };
+  if (action.type === "start") return { ...INITIAL, status: "running", source: action.source };
   if (action.type === "fail") return { ...state, status: "error", error: action.message };
 
   const e = action.event;
@@ -34,6 +44,8 @@ function reducer(state: State, action: Action): State {
   switch (e.type) {
     case "input":
       return state;
+    case "transcript":
+      return { ...state, transcript: e.text };
     case "claims":
       return { ...state, claims: e.claims.map((claim) => ({ claim, routes: [] })) };
     case "sources":
@@ -68,16 +80,35 @@ async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<Che
   if (buffer.trim()) yield JSON.parse(buffer) as CheckEvent;
 }
 
+/** Downscales a screenshot to at most 2000px on its longest side and re-encodes it as JPEG, keeping uploads small. */
+async function prepareImage(file: Blob): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unavailable");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
 export function ClaimChecker() {
   const [state, dispatch] = useReducer(reducer, INITIAL);
-  const [mode, setMode] = useState<"text" | "url">("text");
+  const [mode, setMode] = useState<Mode>("text");
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
+  const [image, setImage] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const running = state.status === "running";
-  const input = mode === "text" ? text.trim() : url.trim();
+  const input = mode === "text" ? text.trim() : mode === "url" ? url.trim() : (image ?? "");
 
   // Bring the results into view as soon as a check starts, so the live progress isn't hidden below the fold.
   useEffect(() => {
@@ -86,17 +117,31 @@ export function ClaimChecker() {
     resultsRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
   }, [state.status]);
 
+  async function loadImage(file: Blob) {
+    if (!file.type.startsWith("image/")) {
+      setImageError("That file isn't an image.");
+      return;
+    }
+    try {
+      setImage(await prepareImage(file));
+      setImageError(null);
+      setMode("image");
+    } catch {
+      setImageError("Couldn't read that image. Try a PNG or JPG.");
+    }
+  }
+
   async function check() {
     if (!input || running) return;
     const controller = new AbortController();
     abortRef.current = controller;
-    dispatch({ type: "start" });
+    dispatch({ type: "start", source: mode });
 
     try {
       const res = await fetch("/api/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mode === "text" ? { text: input } : { url: input }),
+        body: JSON.stringify(mode === "text" ? { text: input } : mode === "url" ? { url: input } : { image: input }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -117,6 +162,13 @@ export function ClaimChecker() {
     }
   }
 
+  const pending =
+    state.source === "image" && state.transcript === undefined
+      ? { dot: TIERS.vision.dot, text: "Nemotron Super VL is reading your screenshot…" }
+      : state.source === "url" && !state.trace.some((s) => s.id === "read-url")
+        ? { dot: "bg-tavily", text: "Tavily is reading the article…" }
+        : { dot: TIERS.nano.dot, text: "Nemotron Nano is reading the text and pulling out the claims…" };
+
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-2 py-6">
@@ -129,8 +181,8 @@ export function ClaimChecker() {
           Paste it. We&rsquo;ll check every claim.
         </h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted">
-          Claim Check pulls out each factual claim, searches the live web for evidence, and has NVIDIA Nemotron models
-          weigh it, with sources you can click.
+          Paste a message, drop a screenshot or link an article. Claim Check pulls out each factual claim, searches the
+          live web for evidence, and has NVIDIA Nemotron models weigh it, with sources you can click.
         </p>
       </section>
 
@@ -140,18 +192,25 @@ export function ClaimChecker() {
           e.preventDefault();
           check();
         }}
+        onPaste={(e) => {
+          const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith("image/"));
+          if (file && !running) {
+            e.preventDefault();
+            loadImage(file);
+          }
+        }}
       >
         <div className="flex gap-1 p-2" role="tablist" aria-label="Input type">
-          {(["text", "url"] as const).map((m) => (
+          {MODES.map((m) => (
             <button
-              key={m}
+              key={m.id}
               type="button"
               role="tab"
-              aria-selected={mode === m}
-              onClick={() => setMode(m)}
-              className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${mode === m ? "bg-surface-2 text-ink" : "text-muted hover:text-ink"}`}
+              aria-selected={mode === m.id}
+              onClick={() => setMode(m.id)}
+              className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${mode === m.id ? "bg-surface-2 text-ink" : "text-muted hover:text-ink"}`}
             >
-              {m === "text" ? "Paste text" : "Article URL"}
+              {m.label}
             </button>
           ))}
         </div>
@@ -172,6 +231,52 @@ export function ClaimChecker() {
             aria-label="Text to fact-check"
             className="block w-full resize-y bg-transparent px-5 py-2 text-[1.05rem] leading-relaxed outline-none placeholder:text-muted/70"
           />
+        ) : mode === "image" ? (
+          <div className="px-4 pt-1 pb-4">
+            {image ? (
+              <div className="flex items-start gap-4">
+                {/* eslint-disable-next-line @next/next/no-img-element -- local data-URL preview, nothing for next/image to optimize */}
+                <img src={image} alt="Screenshot to fact-check" className="max-h-64 rounded-lg border border-line" />
+                <button
+                  type="button"
+                  disabled={running}
+                  onClick={() => setImage(null)}
+                  className="text-sm text-muted hover:text-ink disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  const file = e.dataTransfer.files[0];
+                  if (file) loadImage(file);
+                }}
+                className={`flex min-h-40 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-4 py-8 text-center transition-colors ${dragging ? "border-ink/40 bg-surface-2" : "border-line hover:border-ink/30"}`}
+              >
+                <span className="text-[1.05rem]">Drop a screenshot here, paste it, or click to choose one</span>
+                <span className="text-sm text-muted">Nemotron Super VL reads the text, then every claim in it gets checked</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) loadImage(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+            {imageError ? <p className="mt-2 text-sm text-refuted">{imageError}</p> : null}
+          </div>
         ) : (
           <input
             type="url"
@@ -200,6 +305,17 @@ export function ClaimChecker() {
                 {ex.label}
               </button>
             ))}
+            <button
+              type="button"
+              disabled={running}
+              onClick={async () => {
+                const res = await fetch(SAMPLE_SCREENSHOT);
+                loadImage(await res.blob());
+              }}
+              className="rounded-full border border-line px-3 py-1 text-sm text-muted transition-colors hover:border-ink/30 hover:text-ink disabled:opacity-50"
+            >
+              Screenshot
+            </button>
           </div>
           <div className="flex items-center gap-2">
             {running ? (
@@ -232,6 +348,17 @@ export function ClaimChecker() {
                 {state.error}
               </p>
             ) : null}
+            {state.transcript !== undefined ? (
+              <details open className="group rounded-2xl border border-line bg-surface p-5 sm:p-6">
+                <summary className="cursor-pointer list-none text-sm text-muted hover:text-ink">
+                  <span className="mr-1 inline-block transition-transform group-open:rotate-90">›</span>
+                  What <span className={TIERS.vision.text}>Nemotron Super VL</span> read from the screenshot
+                </summary>
+                <p className="mt-3 leading-relaxed whitespace-pre-wrap">
+                  {state.transcript || "No readable text was found in the screenshot."}
+                </p>
+              </details>
+            ) : null}
             {state.claims.length > 0 || running ? (
               <ReportCard
                 report={state.report}
@@ -242,8 +369,8 @@ export function ClaimChecker() {
             ) : null}
             {running && state.claims.length === 0 ? (
               <p className="flex items-center gap-2 px-1 text-sm text-muted">
-                <span className="size-2 rounded-full bg-nano motion-safe:animate-pulse" />
-                Nemotron Nano is reading the text and pulling out the claims…
+                <span className={`size-2 rounded-full motion-safe:animate-pulse ${pending.dot}`} />
+                {pending.text}
               </p>
             ) : null}
             {state.claims.map((c, i) => (
@@ -264,7 +391,7 @@ function HowItWorks() {
     {
       dot: TIERS.nano.dot,
       title: "Nemotron Nano pulls out the claims",
-      body: "Each checkable statement becomes its own search, and Nano rates how hard it will be to settle.",
+      body: "Screenshots are read first by Nemotron Super VL. Each checkable statement becomes its own search, and Nano rates how hard it will be to settle.",
     },
     {
       dot: "bg-tavily",

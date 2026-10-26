@@ -1,3 +1,6 @@
+/** A made-up group-chat forward, served from /public, for trying screenshot checking without your own image. */
+export const SAMPLE_SCREENSHOT = "/samples/forward-screenshot.png";
+
 export const EXAMPLES = [
   {
     label: "Viral forward",

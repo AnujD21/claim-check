@@ -1,4 +1,4 @@
-export type Tier = "nano" | "super" | "ultra";
+export type Tier = "nano" | "super" | "ultra" | "vision";
 
 export type Verdict = "supported" | "refuted" | "misleading" | "unverified";
 
@@ -47,7 +47,8 @@ export interface TraceStep {
 
 /** One line of the NDJSON stream sent by /api/check. */
 export type CheckEvent =
-  | { type: "input"; source: "text" | "url"; chars: number }
+  | { type: "input"; source: "text" | "url" | "image"; chars: number }
+  | { type: "transcript"; text: string }
   | { type: "claims"; claims: Claim[] }
   | { type: "sources"; claimId: string; sources: Source[] }
   | { type: "routing"; claimId: string; tier: Tier; reason: string }

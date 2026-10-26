@@ -17,21 +17,28 @@ const CONFIGURED: Record<Tier, string | undefined> = {
   nano: process.env.NEMOTRON_NANO_MODEL,
   super: process.env.NEMOTRON_SUPER_MODEL,
   ultra: process.env.NEMOTRON_ULTRA_MODEL,
+  vision: process.env.NEMOTRON_VISION_MODEL,
 };
 
-// If a tier isn't configured, fall back to the next one so the app still runs with a single model.
+// If a text tier isn't configured, fall back to the next one so the app still runs with a single model.
+// Only a vision model can read images, so that tier has no fallback.
 const FALLBACKS: Record<Tier, Tier[]> = {
   nano: ["nano", "super", "ultra"],
   super: ["super", "nano", "ultra"],
   ultra: ["ultra", "super", "nano"],
+  vision: ["vision"],
 };
+
+export function hasModel(tier: Tier) {
+  return FALLBACKS[tier].some((t) => CONFIGURED[t]);
+}
 
 export function modelFor(tier: Tier): string {
   for (const t of FALLBACKS[tier]) {
     const id = CONFIGURED[t];
     if (id) return id;
   }
-  throw new Error("No Nemotron model configured. Set NEMOTRON_NANO_MODEL, NEMOTRON_SUPER_MODEL or NEMOTRON_ULTRA_MODEL.");
+  throw new Error(`No model configured for the ${tier} tier. Check the NEMOTRON_*_MODEL settings.`);
 }
 
 export function missingConfig(): string[] {
@@ -47,7 +54,7 @@ interface JSONCall<T> {
   label: string;
   tier: Tier;
   system: string;
-  user: string;
+  user: string | OpenAI.ChatCompletionContentPart[];
   schema: z.ZodType<T>;
   maxTokens?: number;
   /** Nemotron 3 thinks before answering by default; turning it off makes quick calls about 3x faster. */
@@ -123,13 +130,30 @@ function splitReasoning(content: string, reasoningContent?: string) {
   };
 }
 
+/** Parses the first complete JSON object in `text`; models sometimes wrap it in prose or repeat it. */
 function parseJSON(text: string): unknown {
   const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) return undefined;
-  try {
-    return JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return undefined;
+  if (start === -1) return undefined;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth++;
+    } else if (ch === "}" && --depth === 0) {
+      try {
+        return JSON.parse(text.slice(start, i + 1));
+      } catch {
+        return undefined;
+      }
+    }
   }
+  return undefined;
 }
