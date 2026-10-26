@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { clientIp, takeCheck } from "@/lib/limits";
 import { hasModel, missingConfig } from "@/lib/nebius";
 import { runCheck } from "@/lib/pipeline";
 import type { CheckEvent } from "@/lib/types";
@@ -30,6 +31,10 @@ export async function POST(request: Request) {
   }
   if (body.data.image && !hasModel("vision")) {
     return Response.json({ error: "Screenshot checking isn't set up on this server." }, { status: 400 });
+  }
+  const overLimit = takeCheck(clientIp(request));
+  if (overLimit) {
+    return Response.json({ error: overLimit }, { status: 429 });
   }
 
   const encoder = new TextEncoder();
