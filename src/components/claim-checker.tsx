@@ -341,7 +341,12 @@ export function ClaimChecker() {
       {state.status === "idle" ? (
         <HowItWorks />
       ) : (
-        <div ref={resultsRef} className="mt-8 grid scroll-mt-6 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        // min-h-screen gives the auto-scroll room to reach the results before they've filled in;
+        // minmax(0,1fr) stops long one-line trace labels from widening the column past the phone screen.
+        <div
+          ref={resultsRef}
+          className="mt-8 grid min-h-screen scroll-mt-6 grid-cols-[minmax(0,1fr)] content-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
+        >
           <div className="space-y-4" aria-live="polite">
             {state.error ? (
               <p role="alert" className="rounded-2xl border border-refuted/30 bg-refuted/5 px-5 py-4 text-sm text-refuted">
