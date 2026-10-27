@@ -2,7 +2,7 @@
 
 **Fact-check any message, screenshot or article in about 20 seconds.** Claim Check pulls out every factual claim, searches the live web for evidence, and has NVIDIA Nemotron models running on Nebius Token Factory decide whether each one is supported, false, misleading or unverified, with sources you can click.
 
-- **Live demo:** https://claim-check-xi.vercel.app
+- **Live demo:** https://claimcheck-nemotron.vercel.app (backup address: https://claim-check-xi.vercel.app)
 - **Demo video:** _link added at submission_
 - **Track:** Best Apps and Agents, Nebius x NVIDIA Global AI Hackathon
 
