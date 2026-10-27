@@ -6,6 +6,8 @@
 - **Demo video:** _link added at submission_
 - **Track:** Best Apps and Agents, Nebius x NVIDIA Global AI Hackathon
 
+![Claim Check checking a screenshot of a forwarded message: the text Nemotron Super VL read, a credibility score of 25, per-claim verdicts, and the agent trace listing every model call](docs/screenshot.png)
+
 ## Why
 
 Viral forwards spread faster than anyone can check them: "lemon water kills cancer", "NASA says Earth will go dark for six days", "Bill Gates will pay you to share this". Fact-checkers debunk them, but the debunk rarely reaches the family group chat. Claim Check lets anyone paste the message (or drop a screenshot of it) and get an itemised, sourced answer they can send back.

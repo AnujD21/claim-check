@@ -52,7 +52,7 @@ If there is no readable text, reply {"messages":[]}.`;
 
 const EXTRACT_PROMPT = `You are the claim extractor in a fact-checking pipeline.
 Read the user's text and list the distinct factual claims that can be checked against public sources: statistics, dates, events, quotes, scientific or medical statements, attributions.
-Skip opinions, predictions, jokes and vague statements. Merge duplicates. Keep at most ${MAX_CLAIMS}, choosing the ones most central to the text's message.
+Skip opinions, predictions, jokes, vague statements, and personal anecdotes no public source could confirm (like "my cousin already got paid"). Merge duplicates. Keep at most ${MAX_CLAIMS}, choosing the ones most central to the text's message.
 Don't split one statement into several claims: fold appeals to authority like "doctors are warning" or "scientists say" into the claim they support.
 For each claim give:
 - "claim": one self-contained sentence that makes sense without the original text (replace "he", "this", etc. with what they refer to).
